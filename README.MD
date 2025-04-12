@@ -33,6 +33,7 @@ Welcome to the **Home Dashboard** project! This repository contains the code and
     # For Fedora
     sudo dnf install python3
     ```
+    ```bash
     pip3 install -r requirements.txt
     ```
 4. Create secrets:
