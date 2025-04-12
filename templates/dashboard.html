@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Home Network Dashboard</title>
+    <style>
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #000000;
+        --table-border: #dddddd;
+        --header-bg: #f2f2f2;
+        --online-color: green;
+        --offline-color: red;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        transition: background-color 0.3s, color 0.3s;
+      }
+      table {
+        border-collapse: collapse;
+        width: 90%;
+      }
+      th, td {
+        border: 1px solid var(--table-border);
+        text-align: left;
+        padding: 8px;
+      }
+      th {
+        background-color: var(--header-bg);
+      }
+      .online {
+        color: var(--online-color);
+        font-weight: bold;
+      }
+      .offline {
+        color: var(--offline-color);
+        font-weight: bold;
+      }
+      .service-status {
+        margin-left: 15px;
+      }
+      .dark-mode {
+        --bg-color: #1e1e1e;
+        --text-color: #e8e8e8;
+        --table-border: #555555;
+        --header-bg: #333333;
+        --online-color: #66ff66;
+        --offline-color: #ff6666;
+      }
+      a {
+        color: inherit;
+        text-decoration: underline;
+      }
+      a:visited {
+        color: inherit;
+      }
+      #toggle-dark-mode {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      #refresh-button {
+        margin: 10px 0;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+    </style>
+    <script>
+      (function() {
+        if (localStorage.getItem('darkMode') === 'true') {
+          document.documentElement.classList.add('dark-mode');
+        }
+      })();
+
+      function toggleDarkMode() {
+        document.documentElement.classList.toggle('dark-mode');
+        const isDark = document.documentElement.classList.contains('dark-mode');
+        localStorage.setItem('darkMode', isDark);
+      }
+    </script>
+  </head>
+  <body>
+    <button id="toggle-dark-mode" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    <h1>Device Status Dashboard</h1>
+    <form method="GET" action="/">
+      <button id="refresh-button" type="submit">Refresh Statuses</button>
+    </form>
+    <table>
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>IP Address</th>
+          <th>Host Status</th>
+          <th>Service Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices.keys() %}
+        {% set status = statuses[device] %}
+        <tr>
+          <td>
+            {% if status.url %}
+              <a href="{{ status.url }}" target="_blank">{{ device }}</a>
+            {% else %}
+              {{ device }}
+            {% endif %}
+          </td>
+          <td>{{ status.ip }}</td>
+          <td class="{{ 'online' if status.host else 'offline' }}">
+            {{ 'Online' if status.host else 'Offline' }}
+          </td>
+          <td>
+            {% if device == "Arris Modem" %}
+              <div class="service-status">
+                <strong>Connectivity</strong>: 
+                <span class="{{ 'online' if status.conn_state == 'OK' else 'offline' }}">
+                  {{ status.conn_state or "N/A" }}
+                </span>
+              </div>
+              {% if status.services is defined %}
+                {% for svc, svc_status in status.services.items() %}
+                  {% if svc != "Web Interface" %}
+                    <div class="service-status">
+                      <strong>{{ svc }}</strong>: 
+                      <span class="{{ 'online' if svc_status else 'offline' }}">
+                        {{ 'Online' if svc_status else 'Offline' }}
+                      </span>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            {% elif device == "OpnSense Router" and status.services is defined and status.services['WAN Status'] is defined %}
+              <div class="service-status">
+                <strong>Update Status</strong>: 
+                {% if 'Your packages are up to date' in status.get('update_log', '') %}
+                  <span class="online">Up to date</span>
+                {% else %}
+                  <a href="https://192.168.1.1/ui/core/firmware#status" class="offline">Update/upgrade available</a>
+                {% endif %}
+              </div>
+              <details>
+                <summary>
+                  <strong>WAN Status</strong>: 
+                  <span class="{{ 'online' if status.services['WAN Status'] else 'offline' }}">
+                    {{ 'Online' if status.services['WAN Status'] else 'Offline' }}
+                  </span>
+                </summary>
+                <div class="service-status">
+                  <strong>Status</strong>: 
+                  <span class="{{ 'online' if status.wan_details.status == 'up' else 'offline' }}">
+                    {{ status.wan_details.status|capitalize }}
+                  </span>
+                </div>
+                <div class="service-status">
+                  <strong>IP Address</strong>: {{ status.wan_details.ip_address }}
+                </div>
+                <div class="service-status">
+                  <strong>Gateways</strong>:
+                  <ul>
+                    {% for gw in status.wan_details.gateways %}
+                      <li>{{ gw }}</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              </details>
+            {% elif status.services is defined %}
+              {% for svc, svc_status in status.services.items() %}
+                <div class="service-status">
+                  <strong>{{ svc }}</strong>: 
+                  <span class="{{ 'online' if svc_status else 'offline' }}">
+                    {{ 'Online' if svc_status else 'Offline' }}
+                  </span>
+                </div>
+              {% endfor %}
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+          <td>
+            {% if device == "Arris Modem" %}
+              <form action="{{ url_for('reboot_arris') }}" method="POST">
+                <button type="submit">Reboot</button>
+              </form>
+            {% elif device == "OpnSense Router" %}
+              <form action="{{ url_for('reboot_opnsense') }}" method="POST">
+                <button type="submit">Reboot</button>
+              </form>
+            {% else %}
+              ---
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>
